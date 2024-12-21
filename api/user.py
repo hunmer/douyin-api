@@ -1,5 +1,5 @@
-from . import api
 from utils.request import Request
+from . import api
 from flask import request, jsonify
 
 request_instance = Request()  # 创建 Request 类的实例

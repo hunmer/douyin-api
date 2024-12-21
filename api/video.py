@@ -114,6 +114,32 @@ def get_reply_list():
         return jsonify({'error': 'Failed to retrieve comment list; Check you Cookie!'}), 404
 
 
+"""
+@desc: 获取首页瀑布流视频
+@url: /aweme/v1/web/module/feed/
+"""
+
+
+@api.route('/module/feed/')
+def get_module_feed():
+    count = request.args.get('count')
+    refresh_index = request.args.get('refresh_index')
+    params = {'count': count,
+              'video_type_select': '1',
+              'module_id': '3003101',
+              'filterGids': '',
+              'presented_ids': '',
+              'refer_id': '',
+              'refer_type': '10',
+              "aweme_pc_rec_raw_data": '{"is_client":false}',
+              "refresh_index": refresh_index
+              }
+    url = '/aweme/v1/web/module/feed/'
+    aweme_list = request_instance.getJSON(url, params)
+    if aweme_list:
+        return jsonify(aweme_list)
+
+
 '''
 @desc: 获取推荐页feed
 @url: /aweme/v1/web/tab/feed/
@@ -166,5 +192,3 @@ def post_digg():
         return jsonify(commit_digg)
     # else:
     #     return jsonify({'error': 'Failed to retrieve  collection_list; Check you Cookie and Referer!'}), 403
-
-

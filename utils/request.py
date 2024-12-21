@@ -12,7 +12,9 @@ import random
 import re
 from urllib.parse import quote
 
-import requests
+# import requests
+
+import httpx
 from loguru import logger
 
 from utils.cookies import get_cookie_dict
@@ -74,6 +76,12 @@ class Request(object):
     SIGN = execjs.compile(
         open(os.path.join(filepath, '../lib/douyin.js'), 'r', encoding='utf-8').read())
     WEBID = ''
+    client = httpx.Client(
+        proxies=None,
+        timeout=30.0,
+        verify=False,
+        follow_redirects=True
+    )
 
     def __init__(self, cookie='', UA=''):
         self.COOKIES = get_cookie_dict(cookie)
@@ -136,7 +144,7 @@ class Request(object):
     def getHTML(self, url) -> str:
         headers = self.HEADERS.copy()
         headers['sec-fetch-dest'] = 'document'
-        response = requests.get(url, headers=headers, cookies=self.COOKIES)
+        response = self.client.get(url, headers=headers, cookies=self.COOKIES)
         if response.status_code != 200 or response.text == '':
             logger.error(f'HTML请求失败, url: {url}, header: {headers}')
             return ''
@@ -147,6 +155,8 @@ class Request(object):
         live_url = f'{self.LIVE_HOST}{uri}'
         params = self.get_params(params)
         params["a_bogus"] = self.get_sign(uri, params)
+
+
         # 这个接口必须更改referer的值为当前请求页面的url
         referer_map = {
             '/aweme/v1/web/aweme/related/': f"https://www.douyin.com/video/{params.get('aweme_id')}",
@@ -181,14 +191,14 @@ class Request(object):
             # self.HEADERS["Bd-Ticket-Guard-Iteration-Version"] = '1'
             self.HEADERS["X-Secsdk-Csrf-Token"] = ''
             print(data)
-            response = requests.post(
+            response = self.client.post(
                 url, params=params, data=data, headers=self.HEADERS, cookies=self.COOKIES)
             # print(f'url:{response.url}, header:{self.HEADERS}')
         elif live:
-            response = requests.get(
+            response = self.client.get(
                 live_url, params=params, headers=self.HEADERS, cookies=self.COOKIES)
         else:
-            response = requests.get(
+            response = self.client.get(
                 url, params=params, headers=self.HEADERS, cookies=self.COOKIES)
             # print(f'url:{response.url}, header:{self.HEADERS}')
         if response.status_code != 200 or response.text == '':

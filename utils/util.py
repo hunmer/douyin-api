@@ -1,6 +1,6 @@
 
 import os
-import requests
+import httpx
 import ujson as json
 from loguru import logger
 
@@ -33,7 +33,7 @@ def quit(str: str = ''):
 
 
 def url_redirect(url):
-    r = requests.head(url, allow_redirects=False)
+    r = httpx.head(url, follow_redirects=False)
     u = r.headers.get('Location', url)
     return u
 

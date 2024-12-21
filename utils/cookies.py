@@ -1,6 +1,6 @@
 import os
 
-import requests
+import httpx
 import ujson as json
 from loguru import logger
 import browser_cookie3
@@ -13,7 +13,7 @@ def get_cookie_dict(cookie='') -> dict:
         # 自动读取的cookie有效期短，且不一定有效
         if cookie in ['edge', 'chrome']:
             cj = eval(f"browser_cookie3.{cookie}(domain_name='douyin.com')")
-            cookie = requests.utils.dict_from_cookiejar(cj)
+            cookie = httpx.Cookies(cj)
         else:
             cookie = cookies_str_to_dict(cookie)
         save_cookie(cookie)
@@ -40,7 +40,7 @@ def test_cookie(cookie):
     elif type(cookie) is str:
         cookie_dict = cookies_str_to_dict(cookie)
 
-    res = requests.get(url, cookies=cookie_dict).json()
+    res = httpx.get(url, cookies=cookie_dict).json()
     if res['has_login'] is True:
         logger.success('cookie已登录')
         return True
