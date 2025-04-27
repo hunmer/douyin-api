@@ -74,7 +74,7 @@ class TestCase(unittest.TestCase):
 
     # '/aweme/v1/web/commit/item/digg/'
     def test_commit_digg(self):
-        res = self.client.get('/aweme/v1/web/commit/item/digg/?aweme_id=7417840616874331455&type=1&item_type=0')
+        res = self.client.get('/aweme/v1/web/commit/item/digg/?aweme_id=7457492400135621915&type=0&item_type=0')
         self.assertEqual(res.status_code, 200)
         print('commit value:')
         pprint(res.get_json())

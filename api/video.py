@@ -124,6 +124,7 @@ def get_reply_list():
 def get_module_feed():
     count = request.args.get('count')
     refresh_index = request.args.get('refresh_index')
+    tag_id = request.args.get('tag_id')
     params = {'count': count,
               'video_type_select': '1',
               'module_id': '3003101',
@@ -131,7 +132,8 @@ def get_module_feed():
               'presented_ids': '',
               'refer_id': '',
               'refer_type': '10',
-              "aweme_pc_rec_raw_data": '{"is_client":false}',
+              'tag_id': tag_id,
+              "aweme_pc_rec_raw_data": '{"is_xigua_user":0,"is_client":false}',
               "refresh_index": refresh_index
               }
     url = '/aweme/v1/web/module/feed/'
@@ -190,5 +192,5 @@ def post_digg():
     commit_digg = request_instance.getJSON(url, params, data)
     if commit_digg:
         return jsonify(commit_digg)
-    # else:
-    #     return jsonify({'error': 'Failed to retrieve  collection_list; Check you Cookie and Referer!'}), 403
+    else:
+        return jsonify({'error': 'Failed to retrieve  collection_list; Check you Cookie and Referer!'}), 403

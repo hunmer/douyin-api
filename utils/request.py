@@ -4,7 +4,7 @@
 @Time    :   2024年07月15日
 @Author  :   erma0
 @Version :   1.1
-@Link    :   https://github.com/ShilongLee/Crawler
+@Link    :   https://github.com/ShilongLee/Crawler/blob/main/service/douyin/logic/common.py
 @Desc    :   抖音sign
 '''
 import os
