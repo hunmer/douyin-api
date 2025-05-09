@@ -79,6 +79,13 @@ class TestCase(unittest.TestCase):
         print('commit value:')
         pprint(res.get_json())
 
+    # '/aweme/v1/web/home/channel/setting/'
+    def test_get_channel_setting(self):
+        res = self.client.get('/aweme/v1/web/home/channel/setting/')
+        self.assertEqual(res.status_code, 200)
+        print('channel_setting value:')
+        pprint(res.get_json())
+
 
 if __name__ == '__main__':
     unittest.main()

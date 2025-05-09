@@ -82,3 +82,20 @@ def get_hot_list():
         return jsonify(hot_list)
     else:
         return jsonify({'error': 'Failed to retrieve emoticon_list; Check you Cookie and Referer!'}), 403
+
+
+'''
+@desc: 精选页标签
+@url： /aweme/v1/web/home/channel/setting/
+'''
+@api.route('/home/channel/setting/')
+def get_channel_setting():
+    url = '/aweme/v1/web/home/channel/setting/'
+    params = {
+        'channel': 'channel_pc_web'
+    }
+    channel_setting = request_instance.getJSON(url, params)
+    if channel_setting:
+        return jsonify(channel_setting)
+    else:
+        return jsonify({'error': 'Failed to retrieve channel_setting; Check you Cookie and Referer!'}), 403
