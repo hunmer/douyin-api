@@ -1,5 +1,6 @@
 import os
 import time
+import base64
 import ujson as json
 from typing import Dict, List, Optional
 from loguru import logger
@@ -56,7 +57,6 @@ class AccountManager:
         try:
             with open(self.cookies_file, 'w', encoding='utf-8') as f:
                 json.dump(self.accounts, f, ensure_ascii=False, indent=2)
-            logger.info("账号数据保存成功")
         except Exception as e:
             logger.error(f"保存cookies文件失败: {e}")
     
@@ -174,7 +174,16 @@ class AccountManager:
     
     def _cookies_str_to_dict(self, cookie_string: str) -> dict:
         """将cookie字符串转换为字典"""
-        cookies = cookie_string.strip().split('; ')
+        # 首先尝试base64解码
+        decoded_cookie = cookie_string
+        try:
+            # 尝试base64解码
+            decoded_cookie = base64.b64decode(cookie_string).decode('utf-8')
+        except Exception:
+            # 如果解码失败，使用原始字符串
+            decoded_cookie = cookie_string
+        
+        cookies = decoded_cookie.strip().split('; ')
         cookie_dict = {}
         for cookie in cookies:
             if cookie == '' or cookie == 'douyin.com':

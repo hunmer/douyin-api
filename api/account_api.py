@@ -96,20 +96,20 @@ def _add_or_update_account(is_update=False):
         test_login = data.get('testLogin', True)  # 默认测试登录状态
         cookie = cookie.strip() if cookie else ''
         
-        # 尝试解码base64格式的cookie
+        # 只处理base64格式的cookie
         if cookie:
             try:
-                # 检查是否为base64编码（简单检查：长度是4的倍数且只包含base64字符）
-                if len(cookie) % 4 == 0 and all(c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=' for c in cookie):
-                    decoded_cookie = base64.b64decode(cookie).decode('utf-8')
-                    # 验证解码后的内容是否像cookie（包含=和;）
-                    if '=' in decoded_cookie or ';' in decoded_cookie:
-                        cookie = decoded_cookie
-                        logger.info("检测到base64编码的cookie，已自动解码")
+                # 直接尝试base64解码
+                decoded_cookie = base64.b64decode(cookie).decode('utf-8')
+                logger.info("Cookie已从base64解码")
             except Exception as e:
-                # 如果解码失败，继续使用原始cookie
-                logger.debug(f"Cookie base64解码失败，使用原始数据: {e}")
-                pass
+                return jsonify({
+                    'code': 1,
+                    'message': 'Cookie必须是base64格式',
+                    'data': None
+                }), 400
+        else:
+            decoded_cookie = ''
         
         if not name:
             # 如果有cookie但没有name，给出更详细的提示
@@ -135,19 +135,23 @@ def _add_or_update_account(is_update=False):
             }), 400
         
         # 测试cookie是否有效（如果提供了cookie）
-        if cookie and test_login and not test_cookie(cookie):
-            return jsonify({
-                'code': 1,
-                'message': 'Cookie无效或未登录',
-                'data': None
-            }), 400
+        if cookie and test_login:
+            # 使用解码后的cookie进行测试
+            if not test_cookie(decoded_cookie):
+                return jsonify({
+                    'code': 1,
+                    'message': 'Cookie无效或未登录',
+                    'data': None
+                }), 400
         
         manager = AccountManager.get_instance()
         
         if is_update:
+            # 更新时保存原始base64格式cookie
             success = manager.update_account(name, cookie, description)
             action = '更新'
         else:
+            # 添加时保存原始base64格式cookie
             success = manager.add_account(name, cookie, description)
             action = '添加'
         
@@ -280,15 +284,35 @@ def test_account_cookie():
                     'message': '账号不存在',
                     'data': None
                 }), 404
-            cookie = account['cookie']
-        elif not cookie:
+            # 从存储中获取base64格式的cookie并解码
+            stored_cookie = account['cookie']
+            try:
+                decoded_cookie = base64.b64decode(stored_cookie).decode('utf-8')
+            except Exception:
+                return jsonify({
+                    'code': 1,
+                    'message': '存储的cookie格式错误',
+                    'data': None
+                }), 500
+        elif cookie:
+            # 直接提供的cookie，尝试base64解码
+            try:
+                decoded_cookie = base64.b64decode(cookie).decode('utf-8')
+            except Exception:
+                return jsonify({
+                    'code': 1,
+                    'message': 'Cookie必须是base64格式',
+                    'data': None
+                }), 400
+        else:
             return jsonify({
                 'code': 1,
                 'message': '请提供账号名称或cookie',
                 'data': None
             }), 400
         
-        is_valid = test_cookie(cookie)
+        # 使用解码后的cookie进行测试
+        is_valid = test_cookie(decoded_cookie)
         
         return jsonify({
             'code': 0,

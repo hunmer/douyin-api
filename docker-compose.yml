@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  douyin-api:
+    build: .
+    container_name: douyin-api
+    ports:
+      - "3010:3010"
+    volumes:
+      # 挂载数据目录，用于持久化存储cookies等数据
+      - ./data:/app/data
+      # 挂载配置目录
+      - ./config:/app/config
+    environment:
+      # 可以通过环境变量覆盖默认配置
+      - DATA_PATH=/app/data
+      - FLASK_ENV=production
+    command: ["python", "app.py", "--data-path", "/app/data"]
+    restart: unless-stopped
+    networks:
+      - douyin-network
+    
+    # 可选：健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  douyin-network:
+    driver: bridge
+
+# 可选：定义数据卷
+volumes:
+  douyin_data:
+    driver: local

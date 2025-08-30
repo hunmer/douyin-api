@@ -17,7 +17,7 @@ def get_cookie_dict(cookie='', name=None) -> dict:
         name: 账号名称，用于从账号管理器获取指定账号的cookie
     """
     # 如果没有提供cookie，尝试从账号管理器获取
-    if not cookie:
+    if not cookie or cookie == '':
         try:
             from utils.account_manager import AccountManager
             manager = AccountManager.get_instance()
@@ -37,14 +37,26 @@ def get_cookie_dict(cookie='', name=None) -> dict:
             cj = eval(f"browser_cookie3.{cookie}(domain_name='douyin.com')")
             cookie = httpx.Cookies(cj)
         else:
-            cookie = cookies_str_to_dict(cookie)
+            # 只接受base64格式的cookie
+            try:
+                decoded_cookie = base64.b64decode(cookie).decode('utf-8')
+                cookie = cookies_str_to_dict(decoded_cookie)
+            except Exception as e:
+                logger.error(f"Cookie必须是base64格式: {e}")
+                return {}
         save_cookie(cookie)
     elif os.path.exists('config/cookie.json'):
         with open('config/cookie.json', 'r', encoding='utf-8') as f:
             cookie = json.load(f)
     elif os.path.exists('config/cookie.txt'):
         with open('config/cookie.txt', 'r', encoding='utf-8') as f:
-            cookie = cookies_str_to_dict(f.read())
+            # 只接受base64格式的cookie
+            try:
+                decoded_cookie = base64.b64decode(f.read().strip()).decode('utf-8')
+                cookie = cookies_str_to_dict(decoded_cookie)
+            except Exception as e:
+                logger.error(f"Cookie文件必须包含base64格式的cookie: {e}")
+                return {}
     else:
         # 只有在真正使用时才提示，避免启动时的噪音
         # 返回空字典，让调用者决定如何处理
@@ -64,7 +76,7 @@ def test_cookie(cookie):
     if type(cookie) is dict:
         cookie_dict = cookie
     elif type(cookie) is str:
-        # 先尝试base64解码，然后转换为字典
+        # 假设传入的已经是解码后的cookie字符串
         cookie_dict = cookies_str_to_dict(cookie)
     else:
         logger.error('cookie格式不正确')
@@ -92,25 +104,16 @@ def test_cookie(cookie):
 
 
 def cookies_str_to_dict(cookie_string: str) -> dict:
-    # 尝试解码base64格式的cookie
-    if cookie_string:
-        try:
-            # 检查是否为base64编码（简单检查：长度是4的倍数且只包含base64字符）
-            if len(cookie_string) % 4 == 0 and all(c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=' for c in cookie_string):
-                decoded_cookie = base64.b64decode(cookie_string).decode('utf-8')
-                # 验证解码后的内容是否像cookie（包含=和;）
-                if '=' in decoded_cookie or ';' in decoded_cookie:
-                    cookie_string = decoded_cookie
-                    logger.info("检测到base64编码的cookie，已自动解码")
-        except Exception as e:
-            # 如果解码失败，继续使用原始cookie
-            logger.debug(f"Cookie base64解码失败，使用原始数据: {e}")
-            pass
+    """将cookie字符串转换为字典（假设传入的是已解码的cookie字符串）"""
+    if not cookie_string:
+        return {}
     
     cookies = cookie_string.strip().split('; ')
     cookie_dict = {}
     for cookie in cookies:
         if cookie == '' or cookie == 'douyin.com':
+            continue
+        if '=' not in cookie:
             continue
         key, value = cookie.split('=', 1)
         cookie_dict[key] = value

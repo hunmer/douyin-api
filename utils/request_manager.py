@@ -13,25 +13,37 @@ class RequestManager:
     _instances: Dict[str, Request] = {}
     
     @classmethod
-    def get_request(cls, account_name: str = None, cookie: str = '', UA: str = '') -> Request:
+    def get_request(cls, cookie: str = '', UA: str = '', use_rotating_cookies: bool = False) -> Request:
         """获取请求实例
         
         Args:
-            account_name: 账号名称，如果为None则使用默认账号
             cookie: 直接提供的cookie字符串
             UA: User Agent字符串
+            use_rotating_cookies: 是否使用轮换cookie
             
         Returns:
             Request实例
         """
         # 生成实例键
-        key = f"{account_name or 'default'}_{hash(cookie)}_{hash(UA)}"
+        key = f"{hash(cookie)}_{hash(UA)}_{use_rotating_cookies}"
         
         # 如果实例不存在，创建新实例
         if key not in cls._instances:
-            cls._instances[key] = Request(cookie=cookie, UA=UA, account_name=account_name)
+            cls._instances[key] = Request(cookie=cookie, UA=UA, use_rotating_cookies=use_rotating_cookies)
         
         return cls._instances[key]
+    
+    @classmethod
+    def get_rotating_request(cls, UA: str = '') -> Request:
+        """获取启用cookie轮换的请求实例
+        
+        Args:
+            UA: User Agent字符串
+            
+        Returns:
+            启用cookie轮换的Request实例
+        """
+        return cls.get_request(cookie='', UA=UA, use_rotating_cookies=True)
     
     @classmethod
     def clear_instances(cls):

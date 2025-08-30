@@ -79,16 +79,18 @@ class Request(object):
     WEBID = ''
     client = httpx.Client(
         proxies=None,
-        timeout=30.0,
+        timeout=httpx.Timeout(30.0, connect=10.0),  # 分别设置总超时和连接超时
         verify=False,
-        follow_redirects=True
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)  # 连接池限制
     )
 
-    def __init__(self, cookie='', UA='', account_name=None):
+    def __init__(self, cookie='', UA='', use_rotating_cookies=True):
         self._cookie = cookie
-        self._account_name = account_name
         self._cookies_loaded = False
         self.COOKIES = {}  # 初始化为空，延迟加载
+        self.use_rotating_cookies = use_rotating_cookies  # 是否使用轮换cookie
+        self._current_request_rotated = False  # 标记当前请求是否已经轮换过cookie
         
         if UA:  # 如果需要访问搜索页面源码等内容，需要提供cookie对应的UA
             version = UA.split(' Chrome/')[1].split(' ')[0]
@@ -102,11 +104,27 @@ class Request(object):
                 "engine_version": version,  # 主要是这个
             })
     
-    def _ensure_cookies_loaded(self):
-        """确保cookies已经加载"""
-        if not self._cookies_loaded:
-            self.COOKIES = get_cookie_dict(self._cookie, self._account_name)
+    def _ensure_cookies_loaded(self, force_reload=False):
+        """确保cookies已经加载
+        
+        Args:
+            force_reload: 是否强制重新加载cookie（用于轮换cookie）
+        """
+        # 如果需要轮换cookie，但当前请求已经轮换过，则不再轮换
+        if force_reload and self._current_request_rotated:
+            force_reload = False
+            
+        if not self._cookies_loaded or force_reload:
+            # 如果没有提供cookie，获取最近未使用的cookie
+            if not self._cookie:
+                self.COOKIES = get_cookie_dict()
+                logger.debug("获取最近未使用的cookie")
+            else:
+                self.COOKIES = get_cookie_dict(self._cookie)
+                logger.debug("使用提供的cookie")
             self._cookies_loaded = True
+            if force_reload:
+                self._current_request_rotated = True
 
     def get_sign(self, uri: str, params: dict) -> dict:
         query = '&'.join([f'{k}={quote(str(v))}' for k, v in params.items()])
@@ -118,7 +136,9 @@ class Request(object):
         return a_bogus
 
     def get_params(self, params: dict) -> dict:
-        self._ensure_cookies_loaded()  # 确保cookies已加载
+        # 只确保cookies已加载，不在这里强制重新加载
+        self._ensure_cookies_loaded()
+        
         params.update(self.PARAMS)
         params['msToken'] = self.get_ms_token()
         params['screen_width'] = self.COOKIES.get('dy_swidth', 2560)
@@ -132,19 +152,39 @@ class Request(object):
 
     def get_webid(self):
         if not self.WEBID:
-            url = 'https://www.douyin.com/?recommend=1'
-            text = self.getHTML(url)
-            pattern = r'\\"user_unique_id\\":\\"(\d+)\\"'
-            match = re.search(pattern, text)
-            if match:
-                self.WEBID = match.group(1)
+            try:
+                url = 'https://www.douyin.com/?recommend=1'
+                text = self.getHTML(url, max_retries=2, delay=0.5)  # 减少重试次数和延迟
+                if text:
+                    pattern = r'\\"user_unique_id\\":\\"(\d+)\\"'
+                    match = re.search(pattern, text)
+                    if match:
+                        self.WEBID = match.group(1)
+                        logger.debug(f'成功获取webid: {self.WEBID}')
+                    else:
+                        logger.warning('未能从页面中解析到webid')
+                else:
+                    logger.warning('获取webid页面内容为空')
+                
+                # 如果仍然没有webid，使用默认值或随机生成
+                if not self.WEBID:
+                    self.WEBID = str(random.randint(1000000000000000000, 9999999999999999999))
+                    logger.info(f'使用随机生成的webid: {self.WEBID}')
+            except Exception as e:
+                logger.error(f'获取webid时发生错误: {e}')
+                # 使用随机webid作为fallback
+                self.WEBID = str(random.randint(1000000000000000000, 9999999999999999999))
+                logger.info(f'获取webid失败，使用随机webid: {self.WEBID}')
+        
         return self.WEBID
 
     def get_ms_token(self, randomlength=120):
         """
         返回cookie中的msToken或随机字符串
         """
-        self._ensure_cookies_loaded()  # 确保cookies已加载
+        # 只确保cookies已加载，不在这里强制重新加载
+        self._ensure_cookies_loaded()
+        
         ms_token = self.COOKIES.get('msToken', None)
         if not ms_token:
             ms_token = ''
@@ -155,7 +195,15 @@ class Request(object):
         return ms_token
 
     def getHTML(self, url, max_retries=3, delay=1) -> str:
-        self._ensure_cookies_loaded()  # 确保cookies已加载
+        # 重置当前请求的轮换标记
+        self._current_request_rotated = False
+        
+        # 如果启用了轮换cookie，每次请求都使用新cookie
+        if self.use_rotating_cookies and not self._cookie:
+            self._ensure_cookies_loaded(force_reload=True)
+        else:
+            self._ensure_cookies_loaded()  # 确保cookies已加载
+        
         headers = self.HEADERS.copy()
         headers['sec-fetch-dest'] = 'document'
         
@@ -182,13 +230,20 @@ class Request(object):
         
         return ''
 
-    def getJSON(self, uri: str, params: dict, data: dict = None, live=None):
-        self._ensure_cookies_loaded()  # 确保cookies已加载
+    def getJSON(self, uri: str, params: dict, data: dict = None, live=None, max_retries=3, delay=1):
+        # 重置当前请求的轮换标记
+        self._current_request_rotated = False
+        
+        # 如果启用了轮换cookie，每次请求都使用新cookie
+        if self.use_rotating_cookies and not self._cookie:
+            self._ensure_cookies_loaded(force_reload=True)
+        else:
+            self._ensure_cookies_loaded()  # 确保cookies已加载
+        
         url = f'{self.HOST}{uri}'
         live_url = f'{self.LIVE_HOST}{uri}'
         params = self.get_params(params)
         params["a_bogus"] = self.get_sign(uri, params)
-
 
         # 这个接口必须更改referer的值为当前请求页面的url
         referer_map = {
@@ -215,30 +270,60 @@ class Request(object):
             if pattern == uri:
                 self.HEADERS['referer'] = referer_value
                 break
-        if data:
-            bd_client_data = self.COOKIES.get("bd_ticket_guard_client_data", None)
-            self.HEADERS["Content-Type"] = "application/x-www-form-urlencoded"
-            # self.HEADERS["Bd-Ticket-Guard-Client-Data"] = bd_client_data
-            # self.HEADERS["Bd-Ticket-Guard-Web-Version"] = '1'
-            # self.HEADERS["Bd-Ticket-Guard-Version"] = '2'
-            # self.HEADERS["Bd-Ticket-Guard-Iteration-Version"] = '1'
-            self.HEADERS["X-Secsdk-Csrf-Token"] = ''
-            print(data)
-            response = self.client.post(
-                url, params=params, data=data, headers=self.HEADERS, cookies=self.COOKIES)
-            # print(f'url:{response.url}, header:{self.HEADERS}')
-        elif live:
-            response = self.client.get(
-                live_url, params=params, headers=self.HEADERS, cookies=self.COOKIES)
-        else:
-            response = self.client.get(
-                url, params=params, headers=self.HEADERS, cookies=self.COOKIES)
-            # print(f'url:{response.url}, header:{self.HEADERS}')
-        if response.status_code != 200 or response.text == '':
-            logger.error(
-                f'JSON请求失败：url: {url},  params: {params},header: {self.HEADERS}, code: {response.status_code}, body: {response.text}')
-            return {}
-        return response.json()
+        
+        # 重试机制
+        for attempt in range(max_retries):
+            try:
+                if data:
+                    bd_client_data = self.COOKIES.get("bd_ticket_guard_client_data", None)
+                    self.HEADERS["Content-Type"] = "application/x-www-form-urlencoded"
+                    # self.HEADERS["Bd-Ticket-Guard-Client-Data"] = bd_client_data
+                    # self.HEADERS["Bd-Ticket-Guard-Web-Version"] = '1'
+                    # self.HEADERS["Bd-Ticket-Guard-Version"] = '2'
+                    # self.HEADERS["Bd-Ticket-Guard-Iteration-Version"] = '1'
+                    self.HEADERS["X-Secsdk-Csrf-Token"] = ''
+                    response = self.client.post(
+                        url, params=params, data=data, headers=self.HEADERS, cookies=self.COOKIES)
+                elif live:
+                    response = self.client.get(
+                        live_url, params=params, headers=self.HEADERS, cookies=self.COOKIES)
+                else:
+                    response = self.client.get(
+                        url, params=params, headers=self.HEADERS, cookies=self.COOKIES)
+                
+                if response.status_code != 200 or response.text == '':
+                    logger.error(f'JSON请求失败：url: {url}, status: {response.status_code}, attempt: {attempt + 1}')
+                    if attempt < max_retries - 1:
+                        time.sleep(delay * (attempt + 1))  # 递增延迟
+                        continue
+                    return {}
+                
+                return response.json()
+                
+            except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.TimeoutException) as e:
+                logger.warning(f'JSON请求网络错误：url: {url}, error: {e}, attempt: {attempt + 1}')
+                if attempt < max_retries - 1:
+                    time.sleep(delay * (attempt + 1))  # 递增延迟
+                    continue
+                logger.error(f'JSON请求最终失败：url: {url}, 已重试 {max_retries} 次')
+                return {}
+            except Exception as e:
+                logger.error(f'JSON请求未知错误：url: {url}, error: {e}')
+                return {}
+        
+        return {}
+
+    @classmethod
+    def with_rotating_cookies(cls, UA=''):
+        """创建一个使用轮换cookie的Request实例
+        
+        Args:
+            UA: 用户代理字符串，可选
+            
+        Returns:
+            Request实例，启用了cookie轮换功能
+        """
+        return cls(cookie='', UA=UA, use_rotating_cookies=True)
 
 
 if __name__ == "__main__":
