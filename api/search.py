@@ -2,7 +2,19 @@ from . import api
 from utils.request import Request
 from flask import request, jsonify
 
-request_instance = Request()  # 创建 Request 类的实例
+# 延迟初始化，避免启动时的重复日志输出
+def get_request_instance():
+    """获取Request实例，延迟初始化"""
+    if not hasattr(get_request_instance, '_instance'):
+        get_request_instance._instance = Request()
+    return get_request_instance._instance
+
+# 为了保持向后兼容，创建一个属性访问器
+class RequestProxy:
+    def __getattr__(self, name):
+        return getattr(get_request_instance(), name)
+
+request_instance = RequestProxy()
 
 '''
 @desc: 搜索

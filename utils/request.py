@@ -10,6 +10,7 @@
 import os
 import random
 import re
+import time
 from urllib.parse import quote
 
 # import requests
@@ -83,8 +84,12 @@ class Request(object):
         follow_redirects=True
     )
 
-    def __init__(self, cookie='', UA=''):
-        self.COOKIES = get_cookie_dict(cookie)
+    def __init__(self, cookie='', UA='', account_name=None):
+        self._cookie = cookie
+        self._account_name = account_name
+        self._cookies_loaded = False
+        self.COOKIES = {}  # 初始化为空，延迟加载
+        
         if UA:  # 如果需要访问搜索页面源码等内容，需要提供cookie对应的UA
             version = UA.split(' Chrome/')[1].split(' ')[0]
             _version = version.split('.')[0]
@@ -96,6 +101,12 @@ class Request(object):
                 "browser_version": version,
                 "engine_version": version,  # 主要是这个
             })
+    
+    def _ensure_cookies_loaded(self):
+        """确保cookies已经加载"""
+        if not self._cookies_loaded:
+            self.COOKIES = get_cookie_dict(self._cookie, self._account_name)
+            self._cookies_loaded = True
 
     def get_sign(self, uri: str, params: dict) -> dict:
         query = '&'.join([f'{k}={quote(str(v))}' for k, v in params.items()])
@@ -107,6 +118,7 @@ class Request(object):
         return a_bogus
 
     def get_params(self, params: dict) -> dict:
+        self._ensure_cookies_loaded()  # 确保cookies已加载
         params.update(self.PARAMS)
         params['msToken'] = self.get_ms_token()
         params['screen_width'] = self.COOKIES.get('dy_swidth', 2560)
@@ -132,6 +144,7 @@ class Request(object):
         """
         返回cookie中的msToken或随机字符串
         """
+        self._ensure_cookies_loaded()  # 确保cookies已加载
         ms_token = self.COOKIES.get('msToken', None)
         if not ms_token:
             ms_token = ''
@@ -141,16 +154,36 @@ class Request(object):
                 ms_token += base_str[random.randint(0, length)]
         return ms_token
 
-    def getHTML(self, url) -> str:
+    def getHTML(self, url, max_retries=3, delay=1) -> str:
+        self._ensure_cookies_loaded()  # 确保cookies已加载
         headers = self.HEADERS.copy()
         headers['sec-fetch-dest'] = 'document'
-        response = self.client.get(url, headers=headers, cookies=self.COOKIES)
-        if response.status_code != 200 or response.text == '':
-            logger.error(f'HTML请求失败, url: {url}, header: {headers}')
-            return ''
-        return response.text
+        
+        for attempt in range(max_retries):
+            try:
+                response = self.client.get(url, headers=headers, cookies=self.COOKIES)
+                if response.status_code != 200 or response.text == '':
+                    logger.error(f'HTML请求失败, url: {url}, status: {response.status_code}, attempt: {attempt + 1}')
+                    if attempt < max_retries - 1:
+                        time.sleep(delay * (attempt + 1))  # 递增延迟
+                        continue
+                    return ''
+                return response.text
+            except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.TimeoutException) as e:
+                logger.warning(f'HTML请求网络错误, url: {url}, error: {e}, attempt: {attempt + 1}')
+                if attempt < max_retries - 1:
+                    time.sleep(delay * (attempt + 1))  # 递增延迟
+                    continue
+                logger.error(f'HTML请求最终失败, url: {url}, 已重试 {max_retries} 次')
+                return ''
+            except Exception as e:
+                logger.error(f'HTML请求未知错误, url: {url}, error: {e}')
+                return ''
+        
+        return ''
 
     def getJSON(self, uri: str, params: dict, data: dict = None, live=None):
+        self._ensure_cookies_loaded()  # 确保cookies已加载
         url = f'{self.HOST}{uri}'
         live_url = f'{self.LIVE_HOST}{uri}'
         params = self.get_params(params)
