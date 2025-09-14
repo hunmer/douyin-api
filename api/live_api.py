@@ -1,5 +1,6 @@
 from . import api
 from utils.request import Request
+from utils.account_manager import AccountManager
 from flask import request, jsonify
 
 """
@@ -15,10 +16,30 @@ def get_request_instance():
         get_request_instance._instance = Request()
     return get_request_instance._instance
 
+def get_request_instance_for_account(account_name: str = None):
+    """根据账号名获取Request实例"""
+    account_manager = AccountManager.get_instance()
+    cookie = account_manager.get_cookie(account_name)
+
+    if cookie:
+        # 使用指定账号的cookie创建Request实例
+        return Request(cookie=cookie)
+    else:
+        # 回退到默认实例
+        return get_request_instance()
+
 # 为了保持向后兼容，创建一个属性访问器
 class RequestProxy:
     def __getattr__(self, name):
-        return getattr(get_request_instance(), name)
+        # 检查是否有user_account参数
+        user_account = request.args.get('user_account') if request else None
+        if user_account:
+            # 使用指定账号的Request实例
+            instance = get_request_instance_for_account(user_account)
+        else:
+            # 使用默认实例
+            instance = get_request_instance()
+        return getattr(instance, name)
 
 request_instance = RequestProxy()
 
