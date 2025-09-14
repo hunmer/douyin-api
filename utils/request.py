@@ -118,10 +118,10 @@ class Request(object):
             # 如果没有提供cookie，获取最近未使用的cookie
             if not self._cookie:
                 self.COOKIES = get_cookie_dict()
-                logger.debug("获取最近未使用的cookie")
+                # logger.debug("获取最近未使用的cookie")
             else:
                 self.COOKIES = get_cookie_dict(self._cookie)
-                logger.debug("使用提供的cookie")
+                # logger.debug("使用提供的cookie")
             self._cookies_loaded = True
             if force_reload:
                 self._current_request_rotated = True
@@ -160,7 +160,7 @@ class Request(object):
                     match = re.search(pattern, text)
                     if match:
                         self.WEBID = match.group(1)
-                        logger.debug(f'成功获取webid: {self.WEBID}')
+                        # logger.debug(f'成功获取webid: {self.WEBID}')
                     else:
                         logger.warning('未能从页面中解析到webid')
                 else:

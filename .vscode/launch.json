@@ -9,7 +9,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--data-path",
-                "D:\\douyin_data"
+                "./data"
             ]
         }
     ]
